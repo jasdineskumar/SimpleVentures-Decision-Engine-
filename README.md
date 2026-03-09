@@ -110,9 +110,10 @@ sv-workflow/
 │       └── SV_Profile_Template.md
 │
 ├── Executions/                    # Layer 3: Python scripts
-│   ├── sv_pipeline.py             # Single-company pipeline
-│   ├── batch_sv_pipeline.py       # Batch orchestrator
-│   ├── pipeline_runner.py         # Programmatic runner (used by cloud API)
+│   ├── sv_pipeline.py             # Single-company pipeline (local)
+│   ├── batch_sv_pipeline.py       # Batch orchestrator (local)
+│   ├── pipeline_runner.py         # Programmatic runner (used by Modal)
+│   ├── modal_sv_api.py            # Modal cloud function
 │   ├── url_intake.py
 │   ├── source_capture.py
 │   ├── data_enrichment.py
@@ -124,30 +125,14 @@ sv-workflow/
 │   ├── update_with_research.py
 │   ├── batch_directory_scrape.py
 │   ├── detect_link_type.py
-│   ├── google_auth_cloud.py       # Cloud-compatible Google auth
-│   ├── jobs_sheet_manager.py      # Job history in Google Sheets
-│   ├── modal_sv_api.py            # Modal serverless backend
+│   ├── google_auth_cloud.py       # Service-account auth (cloud-compatible)
 │   └── test_setup.py              # Credential & connectivity check
-│
-├── frontend_api_routes/           # Next.js API proxy routes (security layer)
-│   ├── client-api.ts
-│   ├── submit.ts
-│   ├── list/route.ts
-│   └── [id]/
-│       ├── route.ts
-│       └── status/route.ts
-│
-├── ui inspiration/                # Reference PDFs for Lovable.ai frontend
 │
 ├── docs/                          # All documentation
 │   ├── SETUP.md                   # Initial setup guide
 │   ├── QUICK_REFERENCE.md         # Command cheat sheet
-│   ├── DEPLOYMENT_GUIDE.md        # Cloud deployment (Modal + Vercel)
 │   ├── BATCH_WORKFLOW_GUIDE.md    # Batch processing guide
 │   ├── CANADIAN_RESEARCH_SETUP.md # Optional market research setup
-│   ├── SECURITY_FIXES.md          # Security architecture notes
-│   ├── LOVABLE_INTEGRATION_GUIDE.md # Frontend generation with Lovable.ai
-│   ├── IMPLEMENTATION.md          # What was built & why
 │   └── PROGRESS.md                # Build log & learnings
 │
 └── .tmp/                          # Intermediate files (gitignored)
@@ -162,21 +147,31 @@ sv-workflow/
 
 ---
 
-## Cloud Deployment
+## Run on Modal (Cloud)
 
-The pipeline can run as a serverless API on [Modal](https://modal.com) with a [Next.js](https://nextjs.org) frontend on Vercel.
+Deploy the pipeline as a Modal cloud function to run evaluations remotely without local setup.
 
+```bash
+# One-time setup
+pip install modal
+modal token new
+modal secret create sv-secrets \
+  ANTHROPIC_API_KEY="sk-ant-..." \
+  FIRECRAWL_API_KEY="fc-..." \
+  GOOGLE_SERVICE_ACCOUNT_JSON_CONTENT='{ ...json content... }' \
+  MASTER_PROSPECT_LIST_SHEET_ID="your-sheet-id"
+
+# Deploy
+modal deploy Executions/modal_sv_api.py
+
+# Run a company evaluation in the cloud
+modal run Executions/modal_sv_api.py --url https://example.com
+
+# With Canadian market research
+modal run Executions/modal_sv_api.py --url https://example.com --run-mode deep_canada
 ```
-Browser → Next.js API Routes → Modal Backend → Google Sheets
-          (no API keys)         (async jobs)    (permanent store)
-```
 
-Key design decisions:
-- **Async job pattern** — Submit returns immediately; poll for status. Avoids Modal's 150s HTTP timeout.
-- **Google Sheets as source of truth** — Jobs tab persists permanently, survives Modal Dict resets.
-- **Server-side API keys** — Next.js proxy routes keep credentials off the client.
-
-See [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for the full step-by-step guide.
+The function streams progress logs to your terminal and prints final scores + Google Doc URL on completion. All artifacts (Google Doc, spreadsheet row) are written the same as local runs.
 
 ---
 
@@ -198,12 +193,8 @@ Optional Canadian market research (GPT-4.1) adds ~$0.30–$0.50 per company.
 |-----|-------------|
 | [docs/SETUP.md](docs/SETUP.md) | Prerequisites, API keys, Google Sheets setup |
 | [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) | All commands at a glance |
-| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | Modal + Vercel cloud deployment |
 | [docs/BATCH_WORKFLOW_GUIDE.md](docs/BATCH_WORKFLOW_GUIDE.md) | Batch processing patterns |
 | [docs/CANADIAN_RESEARCH_SETUP.md](docs/CANADIAN_RESEARCH_SETUP.md) | Optional market research |
-| [docs/SECURITY_FIXES.md](docs/SECURITY_FIXES.md) | Security architecture |
-| [docs/LOVABLE_INTEGRATION_GUIDE.md](docs/LOVABLE_INTEGRATION_GUIDE.md) | Frontend with Lovable.ai |
-| [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | Full implementation summary |
 | [CLAUDE.md](CLAUDE.md) | AI orchestration instructions (3-layer architecture) |
 | [Directives/SV_SOP.md](Directives/SV_SOP.md) | Core evaluation SOP |
 
@@ -219,4 +210,6 @@ Optional Canadian market research (GPT-4.1) adds ~$0.30–$0.50 per company.
 
 **Batch processing failed halfway** — Resume with `--resume` flag: `python Executions/batch_sv_pipeline.py companies.json --resume`
 
-**Cloud: Jobs stuck in "queued"** — Check Modal logs: `modal app logs sv-pipeline-api --follow`
+**Modal: pipeline not found** — Ensure `modal deploy Executions/modal_sv_api.py` completed successfully.
+
+**Modal: import errors** — The code mount expects to be run from the repo root. Always run `modal` commands from `sv workflow/`.

@@ -6,7 +6,11 @@
       "Bash(dir /B \"c:\\\\Users\\\\Jaswant Dineshkumar\\\\sv workflow\")",
       "Bash(dir:*)",
       "Bash(git init:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(git commit:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)"
     ]
   }
 }
